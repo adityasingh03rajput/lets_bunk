@@ -10,7 +10,13 @@ PORT = 65432
 # File to store data
 DATA_FILE = "data.json"
 
-# Load data from file
+# Store active connections in memory (not in JSON)
+active_connections = {
+    "students_online": {},  # Format: {username: socket_conn}
+    "teachers_online": {}   # Format: {username: socket_conn}
+}
+
+# Load data from file (only non-socket data)
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
@@ -18,30 +24,30 @@ def load_data():
                 data = json.load(file)
                 if "attendance" not in data:
                     data["attendance"] = {}
-                if "students_online" not in data:
-                    data["students_online"] = {}
-                if "teachers_online" not in data:
-                    data["teachers_online"] = {}
                 return data
         except json.JSONDecodeError:
-            return {"attendance": {}, "students_online": {}, "teachers_online": {}}
-    return {"attendance": {}, "students_online": {}, "teachers_online": {}}
+            return {"attendance": {}}
+    return {"attendance": {}}
 
-# Save data to file
+# Save data to file (only non-socket data)
 def save_data(data):
     with open(DATA_FILE, "w") as file:
-        json.dump(data, file, indent=4)
+        json.dump({"attendance": data["attendance"]}, file, indent=4)
 
 # Broadcast attendance data to all clients
 def broadcast_attendance():
     data = load_data()
     attendance_data = json.dumps({"action": "update_attendance", "data": data["attendance"]}).encode("utf-8")
-    for conn in data["students_online"].values():
+    
+    # Send to all students
+    for conn in active_connections["students_online"].values():
         try:
             conn.send(attendance_data)
         except:
             pass
-    for conn in data["teachers_online"].values():
+    
+    # Send to all teachers
+    for conn in active_connections["teachers_online"].values():
         try:
             conn.send(attendance_data)
         except:
@@ -51,8 +57,10 @@ def broadcast_attendance():
 def handle_client(conn, addr):
     print(f"Connected by {addr}")
     data = load_data()
-    while True:
-        try:
+    username = None
+    
+    try:
+        while True:
             message = conn.recv(1024).decode("utf-8")
             if not message:
                 break
@@ -64,30 +72,27 @@ def handle_client(conn, addr):
 
             if action == "login":
                 role = "students_online" if status == "student" else "teachers_online"
-                data[role][username] = conn
-                save_data(data)
+                active_connections[role][username] = conn  # Store in memory
+                save_data(data)  # Update JSON file (without sockets)
                 broadcast_attendance()
 
             elif action == "start_timer":
                 data["attendance"][username] = "present"
                 save_data(data)
                 broadcast_attendance()
-                print(f"{username} is present")  # Log to console
+                print(f"{username} is present")
 
-        except Exception as e:
-            print(f"Error: {e}")
-            break
+    except Exception as e:
+        print(f"Error: {e}")
 
-    # Remove disconnected clients
-    for role in ["students_online", "teachers_online"]:
-        for user, client_conn in list(data[role].items()):
-            if client_conn == conn:
-                del data[role][user]
-                save_data(data)
-                broadcast_attendance()
-                break
-
-    conn.close()
+    finally:
+        # Remove disconnected clients
+        if username:
+            for role in ["students_online", "teachers_online"]:
+                if username in active_connections[role]:
+                    del active_connections[role][username]
+                    broadcast_attendance()
+        conn.close()
 
 # Start the server
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
