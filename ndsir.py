@@ -14,13 +14,16 @@ client_socket.connect((HOST, PORT))
 
 # Function to send login data
 def send_login():
-    username = "teacher"  # Or get from input
+    username = "teacher"  # Hardcoded for simplicity (can be input)
     send_data("login", username, "teacher")
 
-# Function to send data
+# Function to send data to the server
 def send_data(action, username=None, status=None):
     data = {"action": action, "username": username, "status": status}
-    client_socket.send(json.dumps(data).encode("utf-8"))
+    try:
+        client_socket.send(json.dumps(data).encode("utf-8"))
+    except (ConnectionError, OSError) as e:
+        print(f"Error sending data: {e}")
 
 # Function to update the attendance table
 def update_table(data):
@@ -41,8 +44,14 @@ def receive_messages():
                 break
             message = json.loads(data)
             if message.get("action") == "update_attendance":
-                teacher_root.after(0, update_table, message.get("data"))
-        except:
+                teacher_root.after(0, update_table, message.get("data", {}))
+        except json.JSONDecodeError:
+            print("Received invalid JSON data")
+        except ConnectionError:
+            print("Connection lost")
+            break
+        except Exception as e:
+            print(f"Error receiving data: {e}")
             break
 
 # Start the receive thread
@@ -68,4 +77,10 @@ tree.pack(fill="both", expand=True, padx=20, pady=20)
 # Send login info
 send_login()
 
+# Close socket on exit
+def on_closing():
+    client_socket.close()
+    teacher_root.destroy()
+
+teacher_root.protocol("WM_DELETE_WINDOW", on_closing)
 teacher_root.mainloop()
