@@ -4,7 +4,7 @@ import socket
 import json
 import threading
 
-HOST = "192.168.115.49"  # Same as server IP
+HOST = "192.168.115.174"  # Same as server IP
 PORT = 65432
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
