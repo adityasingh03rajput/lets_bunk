@@ -32,8 +32,11 @@ def save_users(users):
 
 # Function to send data to server
 def send_data(action, username=None, status=None):
-    data = {"action": action, "username": username, "status": status}
-    client_socket.send(json.dumps(data).encode("utf-8"))
+    try:
+        data = {"action": action, "username": username, "status": status}
+        client_socket.send(json.dumps(data).encode("utf-8"))
+    except (ConnectionError, OSError) as e:
+        messagebox.showerror("Connection Error", f"Failed to send data: {e}")
 
 # Signup function
 def signup():
@@ -131,7 +134,7 @@ def check_wifi_reconnect(username):
 # Function to start the timer
 def start_timer(username):
     global timer, timer_started
-    timer = 10  # Reset the timer
+    timer = 10  # Reset the timer (change to desired duration)
     timer_started = True
     start_button.config(state=tk.DISABLED)
     send_data("start_timer", username, "present")  # Notify server that student is present
@@ -176,6 +179,21 @@ def start_attendance_timer(username):
     timer_started = False
     root_attend.mainloop()
 
+# Function to handle server messages (for future enhancements)
+def receive_messages():
+    while True:
+        try:
+            data = client_socket.recv(1024).decode("utf-8")
+            if not data:
+                break
+            message = json.loads(data)
+            # Handle server messages here if needed
+        except:
+            break
+
+# Start the receive thread
+threading.Thread(target=receive_messages, daemon=True).start()
+
 # Create the main login window
 root = tk.Tk()
 root.title("Signup and Login System")
@@ -201,5 +219,10 @@ button_signup.pack(pady=10)
 button_login = tk.Button(root, text="Login", command=login)
 button_login.pack(pady=10)
 
-# Run the login application
+# Close socket when application exits
+def on_closing():
+    client_socket.close()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_closing)
 root.mainloop()
